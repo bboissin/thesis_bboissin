@@ -10,17 +10,17 @@ pub struct RegisterCopy {
 }
 
 // Algorithm 13: Parallel copy sequentialization
-// 
+//
 // Takes a list of parallel copies, return a list of sequential copy operations
-// such that each output register contains the right value. The registers which
-// are not part of the output may contain arbitrary values.
+// such that each output register contains the same value as if the copies were
+// parallel.
 // The `spare` register may be used to break cycles and should not be contained
-// in `parallel_copies`.
-// 
+// in `parallel_copies`. The value of `spare` is undefined after the function
+// returns.
+//
 // Varies slightly from the original algorithm as it splits the copies between
 // pending and available to reduce state tracking.
-fn sequentialize_register(parallel_copies: &[RegisterCopy], spare: Register) ->
-Vec<RegisterCopy> {
+fn sequentialize_register(parallel_copies: &[RegisterCopy], spare: Register) -> Vec<RegisterCopy> {
     let mut sequentialized = Vec::new();
     // `resource` in the original code, this point to the current register
     // holding a particular initial value.
@@ -103,8 +103,12 @@ mod tests {
     // Assumes that each register initially contains the value matching its id.
     fn execute_sequential(copies: &[RegisterCopy]) -> HashMap<Register, u32> {
         let mut register_values = HashMap::new();
+        // Initialize registers with their own ids as values.
         for copy in copies {
-            let source_value = *register_values.get(&copy.source).unwrap_or(&copy.source.0);
+            register_values.insert(copy.source, copy.source.0);
+        }
+        for copy in copies {
+            let source_value = *register_values.get(&copy.source).unwrap();
             register_values.insert(copy.destination, source_value);
         }
         register_values
@@ -112,6 +116,11 @@ mod tests {
 
     fn execute_parallel(copies: &[RegisterCopy]) -> HashMap<Register, u32> {
         let mut register_values = HashMap::new();
+        // Initialize registers with their own ids as values.
+        for copy in copies {
+            register_values.insert(copy.source, copy.source.0);
+        }
+        // Execute copies.
         for copy in copies {
             register_values.insert(copy.destination, copy.source.0);
         }
@@ -148,6 +157,7 @@ mod tests {
             (Register(2), 3),
             (Register(3), 5),
             (Register(4), 3),
+            (Register(5), 5),
         ]
         .into_iter()
         .collect();
@@ -210,9 +220,14 @@ mod tests {
         let sequential_result = execute_sequential(&result);
         assert_eq!(
             sequential_result,
-            Vec::from_iter([(Register(2), 1), (Register(3), 2), (Register(4), 3),])
-                .into_iter()
-                .collect::<HashMap<_, _>>()
+            Vec::from_iter([
+                (Register(1), 1),
+                (Register(2), 1),
+                (Register(3), 2),
+                (Register(4), 3),
+            ])
+            .into_iter()
+            .collect::<HashMap<_, _>>()
         );
     }
 
@@ -234,8 +249,6 @@ mod tests {
         ];
         let spare = Register(4);
         let result = sequentialize_register(&copies, spare);
-        // print result for debugging
-        println!("{:?}", result);
         let mut sequential_result = execute_sequential(&result);
         assert_matches!(sequential_result.remove(&spare), Some(_));
         assert_eq!(
@@ -263,9 +276,14 @@ mod tests {
         let sequential_result = execute_sequential(&result);
         assert_eq!(
             sequential_result,
-            Vec::from_iter([(Register(2), 1), (Register(4), 3)])
-                .into_iter()
-                .collect::<HashMap<_, _>>()
+            Vec::from_iter([
+                (Register(1), 1),
+                (Register(2), 1),
+                (Register(3), 3),
+                (Register(4), 3),
+            ])
+            .into_iter()
+            .collect::<HashMap<_, _>>()
         );
     }
 
