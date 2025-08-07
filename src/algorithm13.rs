@@ -12,11 +12,12 @@ pub struct RegisterCopy {
 fn sequentialize_register(parallel_copies: &[RegisterCopy], spare: Register) -> Vec<RegisterCopy> {
     let mut sequentialized = Vec::new();
     // `resource` in the original code, this point to the current register holding a particular initial value.
+    // If a given Register is no longer needed, the value might be inaccurate.
     let mut current_holder = std::collections::HashMap::new();
     // Copies that are pending, indexed by destination register.
     // Use btree map to stay deterministic.
     let mut pending = std::collections::BTreeMap::new();
-    // If a copy can be materialized, we move it from pending into available.
+    // If a copy can be materialized (nothing depends on the destination), we move it from pending into available.
     let mut available = Vec::new();
 
     for copy in parallel_copies {
@@ -25,22 +26,21 @@ fn sequentialize_register(parallel_copies: &[RegisterCopy], spare: Register) -> 
         }
         if let Some(_old_value) = pending.insert(copy.destination, copy) {
             panic!(
-                "Destination register {:?} already has a predecessor",
+                "Destination register {:?} has multiple copies.",
                 copy.destination
             );
         }
         current_holder.insert(copy.source, copy.source);
     }
     for copy in parallel_copies {
-        // If we didn't record it, this means we don't need it so far.
+        // If we didn't record it, this means nothing depends on that register.
         if !current_holder.contains_key(&copy.destination) {
             pending.remove(&copy.destination);
             available.push(copy);
         }
     }
-    while !pending.is_empty() {
-        while !available.is_empty() {
-            let copy = available.pop().unwrap();
+    while !pending.is_empty() || !available.is_empty() {
+        while let Some(copy) = available.pop() {
             if let Some(source) = current_holder.get_mut(&copy.source) {
                 // Materialize the copy.
                 sequentialized.push(RegisterCopy {
@@ -59,17 +59,18 @@ fn sequentialize_register(parallel_copies: &[RegisterCopy], spare: Register) -> 
                 panic!("No holder for source register {:?}", copy.source);
             }
         }
-        if !pending.is_empty() {
-            // Use spare register to break cycle.
-            // pick the first pending copy.
-            let destination = pending.iter().next().unwrap().0.clone();
-            let copy = pending.remove(&destination).unwrap();
+        if let Some((destination,  copy)) = pending.iter().next() {
             sequentialized.push(RegisterCopy {
                 source: copy.destination,
                 destination: spare,
             });
             current_holder.insert(copy.destination, spare);
             available.push(copy);
+            let to_remove = *destination;
+            pending.remove(&to_remove);
+        } else {
+            // nothing pending.
+            break;
         }
     }
     sequentialized
