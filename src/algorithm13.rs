@@ -9,7 +9,13 @@ pub struct RegisterCopy {
     pub destination: Register,
 }
 
-fn sequentialize_register(parallel_copies: &[RegisterCopy], spare: Register) -> Vec<RegisterCopy> {
+// Takes a list of parallel copies, return a list of sequential copy operations
+// such that each output register contains the right value. The registers which
+// are not part of the output may contain arbitrary values.
+// The `spare` register may be used to break cycles and should not be contained
+// in `parallel_copies`.
+fn sequentialize_register(parallel_copies: &[RegisterCopy], spare: Register) ->
+Vec<RegisterCopy> {
     let mut sequentialized = Vec::new();
     // `resource` in the original code, this point to the current register holding a particular initial value.
     // If a given Register is no longer needed, the value might be inaccurate.
@@ -59,7 +65,8 @@ fn sequentialize_register(parallel_copies: &[RegisterCopy], spare: Register) -> 
                 panic!("No holder for source register {:?}", copy.source);
             }
         }
-        if let Some((destination,  copy)) = pending.iter().next() {
+        // If we have anything left, break the cycle by using the spare register on the first pending entry.
+        if let Some((destination, copy)) = pending.iter().next() {
             sequentialized.push(RegisterCopy {
                 source: copy.destination,
                 destination: spare,
@@ -225,6 +232,29 @@ mod tests {
         assert_eq!(
             sequential_result,
             Vec::from_iter([(Register(2), 1), (Register(3), 2), (Register(1), 3),])
+                .into_iter()
+                .collect::<HashMap<_, _>>()
+        );
+    }
+
+    #[test]
+    fn test_sequentialize_no_pending() {
+        let copies = vec![
+            RegisterCopy {
+                source: Register(1),
+                destination: Register(2),
+            },
+            RegisterCopy {
+                source: Register(3),
+                destination: Register(4),
+            },
+        ];
+        let spare = Register(5);
+        let result = sequentialize_register(&copies, spare);
+        let sequential_result = execute_sequential(&result);
+        assert_eq!(
+            sequential_result,
+            Vec::from_iter([(Register(2), 1), (Register(4), 3)])
                 .into_iter()
                 .collect::<HashMap<_, _>>()
         );
