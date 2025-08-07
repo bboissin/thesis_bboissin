@@ -1,4 +1,5 @@
-pub mod algorithm13;
+mod algorithm13;
+mod algorithm2;
 
 fn main() {
     println!("Hello, world!");
