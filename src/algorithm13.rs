@@ -9,21 +9,28 @@ pub struct RegisterCopy {
     pub destination: Register,
 }
 
+// Algorithm 13: Parallel copy sequentialization
+// 
 // Takes a list of parallel copies, return a list of sequential copy operations
 // such that each output register contains the right value. The registers which
 // are not part of the output may contain arbitrary values.
 // The `spare` register may be used to break cycles and should not be contained
 // in `parallel_copies`.
+// 
+// Varies slightly from the original algorithm as it splits the copies between
+// pending and available to reduce state tracking.
 fn sequentialize_register(parallel_copies: &[RegisterCopy], spare: Register) ->
 Vec<RegisterCopy> {
     let mut sequentialized = Vec::new();
-    // `resource` in the original code, this point to the current register holding a particular initial value.
+    // `resource` in the original code, this point to the current register
+    // holding a particular initial value.
     // If a given Register is no longer needed, the value might be inaccurate.
     let mut current_holder = std::collections::HashMap::new();
     // Copies that are pending, indexed by destination register.
     // Use btree map to stay deterministic.
     let mut pending = std::collections::BTreeMap::new();
-    // If a copy can be materialized (nothing depends on the destination), we move it from pending into available.
+    // If a copy can be materialized (nothing depends on the destination), we
+    // move it from pending into available.
     let mut available = Vec::new();
 
     for copy in parallel_copies {
@@ -58,14 +65,16 @@ Vec<RegisterCopy> {
                     // Point to the new destination.
                     *source = copy.destination;
                 } else if *source == spare {
-                    // Also point to new destination if we were copying from a spare, this lets us reuse spare for the next cycle.
+                    // Also point to new destination if we were copying from a
+                    // spare, this lets us reuse spare for the next cycle.
                     *source = copy.destination;
                 }
             } else {
                 panic!("No holder for source register {:?}", copy.source);
             }
         }
-        // If we have anything left, break the cycle by using the spare register on the first pending entry.
+        // If we have anything left, break the cycle by using the spare register
+        // on the first pending entry.
         if let Some((destination, copy)) = pending.iter().next() {
             sequentialized.push(RegisterCopy {
                 source: copy.destination,
